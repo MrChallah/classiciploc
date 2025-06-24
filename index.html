@@ -59,38 +59,6 @@
     50% { transform: translateX(-50%) translateY(-2px); opacity: 1; }
   }
   
-  .fog-waves {
-    position: absolute;
-    top: 25px;
-    left: 50%;
-    transform: translateX(-50%);
-    font-size: 10px;
-    animation: fogWave 3s ease-in-out infinite;
-  }
-  
-  .fog-waves.with-heat {
-    left: 1%;
-  }
-  
-  .fog-waves.with-wind {
-    left: 97%;
-  }
-  
-  .fog-waves.with-heat-wind {
-    top: 45px;
-    left: 25%;
-  }
-  
-  @keyframes fogWave {
-    0%, 100% { transform: translateX(-50%) translateY(0px); opacity: 0.6; }
-    50% { transform: translateX(-50%) translateY(-1px); opacity: 0.9; }
-  }
-  
-  .secondary-icons-container {
-    position: relative;
-    display: inline-block;
-  }
-  
   .icon-text-shadow {
     color: white;
     font-size: 1.3em;
@@ -110,11 +78,10 @@
     </div>
     <div class="d-flex align-items-center fs-5 fw-bold text-shadow text-nowrap weather-row">
       <span class="info-icon me-2">
-        <span id="weather-icon" class="weather-icon secondary-icons-container">
+        <span id="weather-icon" class="weather-icon">
           <i id="weather-icon-main" class="fa-solid fa-cloud weather-icon-main"></i>
           <i id="heat-waves" class="fa-solid fa-water heat-waves" style="display: none;"></i>
           <i id="wind-waves" class="fa-solid fa-wind wind-waves" style="display: none;"></i>
-          <img id="fog-waves" class="fog-waves" style="display: none; width: 14px; height: 14px; filter: drop-shadow(-1px -1px 0 #000) drop-shadow(1px -1px 0 #000) drop-shadow(-1px 1px 0 #000) drop-shadow(1px 1px 0 #000) drop-shadow(0 0 4px #000);" alt="Foggy" />
         </span>
       </span>
       <span id="weather">--°C</span>
@@ -411,40 +378,11 @@
       let isWindy = windSpeed > 18;
       let isVeryWindy = windSpeed > 35;
       
-      // Fog conditions - now as secondary effects only
-      let isFoggy = visibility < 1000 && (j.current.weather_code === 45 || j.current.weather_code === 48);
-      let isHeavyFog = visibility < 500;
-      
-      console.log('Visibility:', visibility, 'm, isFoggy:', isFoggy, 'isHeavyFog:', isHeavyFog);
-      console.log('Wind speed:', windSpeed, 'km/h, isWindy:', isWindy, 'isVeryWindy:', isVeryWindy);
-      
       let desc = weatherCodes[j.current.weather_code] || 'Unknown';
       
-      // Determine main weather condition when foggy
-      if (isFoggy) {
-        // If there's precipitation with fog, prioritize the precipitation
-        if (precipitation > 0) {
-          if (j.current.weather_code >= 61 && j.current.weather_code <= 67) {
-            desc = 'Light Rain';
-          } else if (j.current.weather_code >= 71 && j.current.weather_code <= 77) {
-            desc = 'Light Snow';
-          } else {
-            desc = 'Light Drizzle';
-          }
-        } else {
-          // No precipitation, determine based on time and other factors
-          if (!isDay) {
-            desc = 'Mostly Cloudy';
-          } else {
-            // Daytime fog usually means overcast conditions
-            desc = 'Overcast';
-          }
-        }
-      } else {
-        // Change "Clear Sky" to "Sunny" if temperature is above 17°C and it's daytime
-        if (j.current.weather_code === 0 && c > 17 && isDay) {
-          desc = 'Sunny';
-        }
+      // Change "Clear Sky" to "Sunny" if temperature is above 17°C and it's daytime
+      if (j.current.weather_code === 0 && c > 17 && isDay) {
+        desc = 'Sunny';
       }
       
       // Get regional heat wave threshold
@@ -454,29 +392,16 @@
       // Check for heat wave conditions
       const isHot = c >= heatThreshold.threshold;
       
-      // Add secondary conditions to weather text
-      let secondaryConditions = [];
+      // Add wind description to weather text if windy
       if (isVeryWindy) {
-        secondaryConditions.push('Very Windy');
+        desc += ', Very Windy';
       } else if (isWindy) {
-        secondaryConditions.push('Windy');
+        desc += ', Windy';
       }
       
+      // Add heat wave description if applicable
       if (isHot) {
-        secondaryConditions.push('Heat Wave');
-      }
-      
-      if (isFoggy) {
-        if (isHeavyFog) {
-          secondaryConditions.push('Dense Fog');
-        } else {
-          secondaryConditions.push('Fog');
-        }
-      }
-      
-      // Combine main description with secondary conditions
-      if (secondaryConditions.length > 0) {
-        desc += ', ' + secondaryConditions.join(', ');
+        desc += ', Heat Wave';
       }
       
       weatherEl.textContent = `${c}°C | ${f}°F, ${desc}`;
@@ -485,38 +410,25 @@
       const weatherIconMain = document.getElementById('weather-icon-main');
       const heatWaves = document.getElementById('heat-waves');
       const windWaves = document.getElementById('wind-waves');
-      const fogWaves = document.getElementById('fog-waves');
       const iconClass = getWeatherIcon(j.current.weather_code, isDay, c);
       
       // Remove all existing weather icon classes
       weatherIconMain.className = 'weather-icon-main';
       weatherIconMain.classList.add('fa-solid', iconClass);
       
-      // Count active secondary icons
-      let activeSecondaryIcons = [];
-      if (isHot) activeSecondaryIcons.push('heat');
-      if (isWindy) activeSecondaryIcons.push('wind');
-      if (isFoggy) activeSecondaryIcons.push('fog');
-      
-      console.log('Active secondary icons:', activeSecondaryIcons);
-      
-      // Reset all positioning classes
-      if (heatWaves) {
-        heatWaves.classList.remove('with-wind');
-      }
-      if (windWaves) {
-        windWaves.classList.remove('only-wind');
-      }
-      if (fogWaves) {
-        fogWaves.classList.remove('with-heat', 'with-wind', 'with-heat-wind');
-      }
-      
       // Show heat waves based on regional threshold
       if (heatWaves) {
         if (isHot) {
           heatWaves.style.display = 'inline-block';
+          // Position based on whether wind is also showing
+          if (isWindy) {
+            heatWaves.classList.add('with-wind');
+          } else {
+            heatWaves.classList.remove('with-wind');
+          }
         } else {
           heatWaves.style.display = 'none';
+          heatWaves.classList.remove('with-wind');
         }
       }
       
@@ -524,88 +436,27 @@
       if (windWaves) {
         if (isWindy) {
           windWaves.style.display = 'inline-block';
+          
+          // Position wind waves - if no heat, center it; if heat, keep it to the right
+          if (isHot) {
+            windWaves.classList.remove('only-wind');
+            // Update heat waves to show they're with wind
+            if (heatWaves) {
+              heatWaves.classList.add('with-wind');
+            }
+          } else {
+            windWaves.classList.add('only-wind');
+          }
         } else {
           windWaves.style.display = 'none';
-        }
-      }
-      
-      // Show fog waves if foggy conditions
-      if (fogWaves) {
-        if (isFoggy) {
-          console.log('Attempting to show fog waves...');
+          windWaves.classList.remove('only-wind');
           
-          // Load fog icon
-          const repoBaseUrl = 'https://raw.githubusercontent.com/MrChallah/MrChallah.github.io/main/v4/';
-          const fallbackUrl = 'https://maps.gstatic.com/weather/v1/';
-          
-          // Clear any existing error handlers
-          fogWaves.onerror = null;
-          fogWaves.onload = null;
-          
-          // Set up error handler first
-          fogWaves.onerror = function() {
-            console.log('Primary fog icon failed, trying fallback...');
-            this.onerror = function() {
-              console.log('Fallback fog icon also failed, using text fallback');
-              this.style.display = 'none';
-              
-              // Create a text-based fog indicator as last resort
-              let textFog = document.getElementById('text-fog-indicator');
-              if (!textFog) {
-                textFog = document.createElement('span');
-                textFog.id = 'text-fog-indicator';
-                textFog.innerHTML = '🌫️';
-                textFog.style.cssText = 'position: absolute; top: 25px; left: 50%; transform: translateX(-50%); font-size: 12px; animation: fogWave 3s ease-in-out infinite;';
-                document.getElementById('weather-icon').appendChild(textFog);
-              }
-              textFog.style.display = 'inline-block';
-            };
-            this.src = fallbackUrl + 'fog.svg';
-          };
-          
-          // Set up success handler
-          fogWaves.onload = function() {
-            console.log('Fog icon loaded successfully');
-          };
-          
-          // Set the primary source
-          fogWaves.src = repoBaseUrl + 'haze_fog_dust_smoke.svg';
-          fogWaves.style.display = 'inline-block';
-          
-          console.log('Fog waves display set to inline-block, src:', fogWaves.src);
-        } else {
-          console.log('Not foggy, hiding fog waves');
-          fogWaves.style.display = 'none';
-          
-          // Also hide text fog indicator if it exists
-          const textFog = document.getElementById('text-fog-indicator');
-          if (textFog) {
-            textFog.style.display = 'none';
+          // Remove wind class from heat waves
+          if (heatWaves) {
+            heatWaves.classList.remove('with-wind');
           }
         }
       }
-      
-      // Position secondary icons based on what's active (max 2 per line)
-      if (activeSecondaryIcons.length === 2) {
-        // Two icons: position left and right
-        if (activeSecondaryIcons.includes('heat') && activeSecondaryIcons.includes('wind')) {
-          if (heatWaves) heatWaves.classList.add('with-wind');
-        } else if (activeSecondaryIcons.includes('heat') && activeSecondaryIcons.includes('fog')) {
-          if (fogWaves) fogWaves.classList.add('with-heat');
-        } else if (activeSecondaryIcons.includes('wind') && activeSecondaryIcons.includes('fog')) {
-          if (fogWaves) fogWaves.classList.add('with-wind');
-        }
-      } else if (activeSecondaryIcons.length === 3) {
-        // Three icons: first two on top line, third on bottom line
-        if (heatWaves) heatWaves.classList.add('with-wind');
-        if (fogWaves) fogWaves.classList.add('with-heat-wind');
-      } else if (activeSecondaryIcons.length === 1) {
-        // Single icon: center position (default)
-        if (activeSecondaryIcons.includes('wind') && windWaves) {
-          windWaves.classList.add('only-wind');
-        }
-      }
-      
     } catch (error) {
       console.error('Weather fetch failed:', error);
       weatherEl.textContent = "Weather N/A";
