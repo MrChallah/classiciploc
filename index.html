@@ -228,9 +228,26 @@
           // Exact match
           if (l1 === l2) return true;
           
-          // One is a subset of the other (but not just single character differences)
-          if (Math.abs(l1.length - l2.length) > 1) {
-            if (l1.includes(l2) || l2.includes(l1)) return true;
+          // Only check substring matches if the strings are very similar in length
+          // and one is a clear subset with meaningful overlap (not just coincidental letters)
+          if (Math.abs(l1.length - l2.length) <= 3) {
+            // Check if one completely contains the other with significant overlap
+            if ((l1.includes(l2) && l2.length >= 4) || (l2.includes(l1) && l1.length >= 4)) {
+              // Additional check: make sure they're not just common words that happen to overlap
+              // Avoid false positives like "San Francisco" vs "California"
+              const commonWords = ['san', 'los', 'las', 'new', 'saint', 'st', 'mount', 'fort'];
+              const l1Words = l1.split(/\s+/);
+              const l2Words = l2.split(/\s+/);
+              
+              // If they share only common words, don't consider them similar
+              const sharedWords = l1Words.filter(word => l2Words.includes(word));
+              const significantSharedWords = sharedWords.filter(word => !commonWords.includes(word) && word.length > 2);
+              
+              // Only consider similar if there are significant shared words
+              if (significantSharedWords.length > 0) {
+                return true;
+              }
+            }
           }
           
           // Check for common administrative redundancy patterns
@@ -264,8 +281,8 @@
             if (city.toLowerCase().includes('region') || 
                 city.toLowerCase().includes('province') ||
                 city.toLowerCase().includes('state')) {
-              city = state;
-              state = '';
+          city = state;
+          state = '';
               console.log('Replacing administrative city with state:', city);
             }
           }
