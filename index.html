@@ -135,172 +135,196 @@
   async function reverseGeocode(lat, lon){
     try {
       // Use Google's reverse geocoding API for better English translations
-      const res = await fetch(`https://maps.googleapis.com/maps/api/geocode/json?latlng=${lat},${lon}&key=${GOOGLE_GEO_KEY}&language=en&result_type=locality|administrative_area_level_1|country`);
+      // Add more result types to get better city resolution for imprecise locations
+      const res = await fetch(`https://maps.googleapis.com/maps/api/geocode/json?latlng=${lat},${lon}&key=${GOOGLE_GEO_KEY}&language=en&result_type=locality|administrative_area_level_2|administrative_area_level_1|country`);
       const data = await res.json();
       
       if (data.status === 'OK' && data.results.length > 0) {
-        const result = data.results[0];
-        const components = result.address_components;
-        
-        // Extract components in preferred order
-        let city = '';
-        let state = '';
-        let country = '';
-        let isJapan = false;
-        
-        // First pass: collect all potential city names
-        let potentialCities = [];
-        
-        components.forEach(component => {
-          const types = component.types;
-          const name = component.long_name;
+        // Try multiple results to find a better city match
+        for (let resultIndex = 0; resultIndex < Math.min(data.results.length, 3); resultIndex++) {
+          const result = data.results[resultIndex];
+          const components = result.address_components;
           
-          // Debug logging
-          console.log('Component:', name, 'Types:', types);
+          // Extract components in preferred order
+          let city = '';
+          let state = '';
+          let country = '';
+          let isJapan = false;
           
-          // Check if location is in Japan
-          if (types.includes('country') && (component.short_name === 'JP' || name === 'Japan')) {
-            isJapan = true;
-          }
+          // First pass: collect all potential city names
+          let potentialCities = [];
           
-          // Collect potential city names
-          if (types.includes('locality')) {
-            potentialCities.push({ name, priority: 1, type: 'locality' });
-          } else if (types.includes('administrative_area_level_2')) {
-            potentialCities.push({ name, priority: 2, type: 'admin_level_2' });
-          } else if (types.includes('sublocality_level_1')) {
-            potentialCities.push({ name, priority: 3, type: 'sublocality' });
-          }
-          
-          // Set state and country
-          if (types.includes('administrative_area_level_1')) {
-            console.log('Setting state to:', name);
-            state = name;
-          } else if (types.includes('country')) {
-            console.log('Setting country to:', name);
-            country = name;
-          }
-        });
-        
-        // Choose the best city name
-        if (potentialCities.length > 0) {
-          // Sort by priority (lower number = higher priority)
-          potentialCities.sort((a, b) => a.priority - b.priority);
-          
-          // Filter out overly detailed districts
-          const filteredCities = potentialCities.filter(cityObj => {
-            const name = cityObj.name;
-            const isDetailedDistrict = name.includes('-dong') || name.includes('dong,') || 
-                                     name.includes('(') || name.includes(')') ||
-                                     name.includes('Ward') || name.includes('District');
-            return !isDetailedDistrict;
-          });
-          
-          // Use the best available city name
-          const bestCity = filteredCities.length > 0 ? filteredCities[0] : potentialCities[0];
-          city = bestCity.name;
-          console.log('Selected city:', city, 'from type:', bestCity.type);
-        }
-        
-        // Store Japan status globally for weather icon selection
-        window.isLocationInJapan = isJapan;
-        
-        // If still no city, try administrative areas as backup
-        if (!city) {
           components.forEach(component => {
             const types = component.types;
             const name = component.long_name;
             
-            if (types.includes('administrative_area_level_2') && name !== state) {
-              city = name;
-              console.log('Using admin_level_2 as city:', city);
+            // Debug logging
+            console.log('Component:', name, 'Types:', types);
+            
+            // Check if location is in Japan
+            if (types.includes('country') && (component.short_name === 'JP' || name === 'Japan')) {
+              isJapan = true;
+            }
+            
+            // Collect potential city names
+            if (types.includes('locality')) {
+              potentialCities.push({ name, priority: 1, type: 'locality' });
+            } else if (types.includes('administrative_area_level_2')) {
+              potentialCities.push({ name, priority: 2, type: 'admin_level_2' });
+            } else if (types.includes('sublocality_level_1')) {
+              potentialCities.push({ name, priority: 3, type: 'sublocality' });
+            }
+            
+            // Set state and country
+            if (types.includes('administrative_area_level_1')) {
+              console.log('Setting state to:', name);
+              state = name;
+            } else if (types.includes('country')) {
+              console.log('Setting country to:', name);
+              country = name;
             }
           });
-        }
-        
-        // Improved redundancy removal
-        function areLocationsSimilar(loc1, loc2) {
-          if (!loc1 || !loc2) return false;
           
-          const l1 = loc1.toLowerCase().trim();
-          const l2 = loc2.toLowerCase().trim();
-          
-          // Exact match
-          if (l1 === l2) return true;
-          
-          // Only check substring matches if the strings are very similar in length
-          // and one is a clear subset with meaningful overlap (not just coincidental letters)
-          if (Math.abs(l1.length - l2.length) <= 3) {
-            // Check if one completely contains the other with significant overlap
-            if ((l1.includes(l2) && l2.length >= 4) || (l2.includes(l1) && l1.length >= 4)) {
-              // Additional check: make sure they're not just common words that happen to overlap
-              // Avoid false positives like "San Francisco" vs "California"
-              const commonWords = ['san', 'los', 'las', 'new', 'saint', 'st', 'mount', 'fort'];
-              const l1Words = l1.split(/\s+/);
-              const l2Words = l2.split(/\s+/);
+          // Choose the best city name
+          if (potentialCities.length > 0) {
+            // Sort by priority (lower number = higher priority)
+            potentialCities.sort((a, b) => a.priority - b.priority);
+            
+            // Filter out overly detailed districts and state names that were incorrectly classified
+            const filteredCities = potentialCities.filter(cityObj => {
+              const name = cityObj.name;
+              const isDetailedDistrict = name.includes('-dong') || name.includes('dong,') || 
+                                       name.includes('(') || name.includes(')') ||
+                                       name.includes('Ward') || name.includes('District');
               
-              // If they share only common words, don't consider them similar
-              const sharedWords = l1Words.filter(word => l2Words.includes(word));
-              const significantSharedWords = sharedWords.filter(word => !commonWords.includes(word) && word.length > 2);
+              // Don't use administrative areas as cities if they're the same as the state
+              const isSameAsState = state && name.toLowerCase() === state.toLowerCase();
               
-              // Only consider similar if there are significant shared words
-              if (significantSharedWords.length > 0) {
-                return true;
+              return !isDetailedDistrict && !isSameAsState;
+            });
+            
+            // Use the best available city name
+            const bestCity = filteredCities.length > 0 ? filteredCities[0] : potentialCities[0];
+            if (bestCity && bestCity.name !== state) {
+              city = bestCity.name;
+              console.log('Selected city:', city, 'from type:', bestCity.type);
+              
+              // If we found a good city, break out of the result loop
+              if (bestCity.priority <= 2) {
+                break;
               }
             }
           }
           
-          // Check for common administrative redundancy patterns
-          const adminSuffixes = ['region', 'province', 'state', 'prefecture', 'district', 'county'];
+          // Store Japan status globally for weather icon selection
+          window.isLocationInJapan = isJapan;
           
-          for (const suffix of adminSuffixes) {
-            if (l1 === l2.replace(new RegExp(`\\s+${suffix}$`), '') ||
-                l2 === l1.replace(new RegExp(`\\s+${suffix}$`), '')) {
-              return true;
-            }
+          // If still no city, try administrative areas as backup
+          if (!city) {
+            components.forEach(component => {
+              const types = component.types;
+              const name = component.long_name;
+              
+              if (types.includes('administrative_area_level_2') && name !== state) {
+                city = name;
+                console.log('Using admin_level_2 as city:', city);
+              }
+            });
           }
           
-          return false;
-        }
-        
-        // Remove redundant components (be more conservative)
-        if (city && state && areLocationsSimilar(city, state)) {
-          console.log('Detected redundant city/state:', city, '/', state);
-          
-          // Prefer actual city names over administrative areas
-          const cityIsMoreSpecific = city.length < state.length || 
-                                   !state.toLowerCase().includes('region') && 
-                                   !state.toLowerCase().includes('province') &&
-                                   !state.toLowerCase().includes('state');
-          
-          if (cityIsMoreSpecific) {
-            state = ''; // Keep city, remove state
-            console.log('Keeping city:', city, 'removing redundant state');
-          } else {
-            // Only replace city with state if city seems like an administrative area
-            if (city.toLowerCase().includes('region') || 
-                city.toLowerCase().includes('province') ||
-                city.toLowerCase().includes('state')) {
-          city = state;
-          state = '';
-              console.log('Replacing administrative city with state:', city);
+          // If we found a reasonable city, use this result
+          if (city && city !== state) {
+            // Improved redundancy removal
+            function areLocationsSimilar(loc1, loc2) {
+              if (!loc1 || !loc2) return false;
+              
+              const l1 = loc1.toLowerCase().trim();
+              const l2 = loc2.toLowerCase().trim();
+              
+              // Exact match
+              if (l1 === l2) return true;
+              
+              // Only check substring matches if the strings are very similar in length
+              // and one is a clear subset with meaningful overlap (not just coincidental letters)
+              if (Math.abs(l1.length - l2.length) <= 3) {
+                // Check if one completely contains the other with significant overlap
+                if ((l1.includes(l2) && l2.length >= 4) || (l2.includes(l1) && l1.length >= 4)) {
+                  // Additional check: make sure they're not just common words that happen to overlap
+                  // Avoid false positives like "San Francisco" vs "California"
+                  const commonWords = ['san', 'los', 'las', 'new', 'saint', 'st', 'mount', 'fort'];
+                  const l1Words = l1.split(/\s+/);
+                  const l2Words = l2.split(/\s+/);
+                  
+                  // If they share only common words, don't consider them similar
+                  const sharedWords = l1Words.filter(word => l2Words.includes(word));
+                  const significantSharedWords = sharedWords.filter(word => !commonWords.includes(word) && word.length > 2);
+                  
+                  // Only consider similar if there are significant shared words
+                  if (significantSharedWords.length > 0) {
+                    return true;
+                  }
+                }
+              }
+              
+              // Check for common administrative redundancy patterns
+              const adminSuffixes = ['region', 'province', 'state', 'prefecture', 'district', 'county'];
+              
+              for (const suffix of adminSuffixes) {
+                if (l1 === l2.replace(new RegExp(`\\s+${suffix}$`), '') ||
+                    l2 === l1.replace(new RegExp(`\\s+${suffix}$`), '')) {
+                  return true;
+                }
+              }
+              
+              return false;
             }
+            
+            // Remove redundant components (be more conservative)
+            if (city && state && areLocationsSimilar(city, state)) {
+              console.log('Detected redundant city/state:', city, '/', state);
+              
+              // Prefer actual city names over administrative areas
+              const cityIsMoreSpecific = city.length < state.length || 
+                                       !state.toLowerCase().includes('region') && 
+                                       !state.toLowerCase().includes('province') &&
+                                       !state.toLowerCase().includes('state');
+              
+              if (cityIsMoreSpecific) {
+                state = ''; // Keep city, remove state
+                console.log('Keeping city:', city, 'removing redundant state');
+              } else {
+                // Only replace city with state if city seems like an administrative area
+                if (city.toLowerCase().includes('region') || 
+                    city.toLowerCase().includes('province') ||
+                    city.toLowerCase().includes('state')) {
+                  city = state;
+                  state = '';
+                  console.log('Replacing administrative city with state:', city);
+                }
+              }
+            }
+            
+            // Build address string, prioritizing the most specific location
+            const parts = [
+              city,
+              state,
+              country
+            ].filter(Boolean);
+            
+            console.log('Final location parts:', parts);
+            return parts.join(", ");
           }
         }
-        
-        // Build address string, prioritizing the most specific location
-        const parts = [
-          city,
-          state,
-          country
-        ].filter(Boolean);
-        
-        console.log('Final location parts:', parts);
-        return parts.join(", ");
+      }
+      
+      // Check for API quota/permission issues
+      if (data.status === 'REQUEST_DENIED' || data.status === 'OVER_QUERY_LIMIT') {
+        console.warn('Google Geocoding API access issue:', data.status, data.error_message);
+        throw new Error(`Google API ${data.status}: ${data.error_message || 'Access denied or quota exceeded'}`);
       }
       
       // Safer fallback - extract only city, state, country from formatted address
-      if (data.results.length > 0) {
+      if (data.results && data.results.length > 0) {
         const formattedAddr = data.results[0].formatted_address;
         const addressParts = formattedAddr.split(', ');
         
