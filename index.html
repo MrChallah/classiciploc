@@ -516,7 +516,7 @@
   
   // Weather condition mapping for Open-Meteo weather codes
   const weatherCodes = {
-    0: 'Clear Sky', 1: 'Mostly Clear', 2: 'Few Clouds', 3: 'Cloudy',
+    0: 'Clear', 1: 'Mostly Clear', 2: 'Few Clouds', 3: 'Cloudy',
     45: 'Fog', 48: 'Depositing Rime Fog', 51: 'Light Drizzle', 53: 'Moderate Drizzle', 
     55: 'Dense Drizzle', 56: 'Light Freezing Drizzle', 57: 'Dense Freezing Drizzle',
     61: 'Light Rain', 63: 'Moderate Rain', 65: 'Heavy Rain', 66: 'Light Freezing Rain', 
@@ -530,7 +530,7 @@
   function getWeatherIcon(weatherCode, isDay = true, temperature = 20) {
     const iconMap = {
       // Clear/Sunny - use sun for day, moon for night
-      0: isDay ? (temperature > 17 ? 'fa-sun' : 'fa-sun') : 'fa-moon',           // Clear Sky
+      0: isDay ? (temperature > 17 ? 'fa-sun' : 'fa-sun') : 'fa-moon',           // Clear
       1: isDay ? 'fa-sun' : 'fa-moon',           // Mainly Clear
       
       // Cloudy
@@ -626,7 +626,7 @@
       
       let desc = weatherCodes[j.current.weather_code] || 'Unknown';
       
-      // Change "Clear Sky" to "Sunny" if temperature is above 17°C and it's daytime
+      // Change "Clear" to "Sunny" if temperature is above 17°C and it's daytime
       if (j.current.weather_code === 0 && c > 17 && isDay) {
         desc = 'Sunny';
       }
