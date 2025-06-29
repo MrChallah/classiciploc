@@ -650,6 +650,22 @@
         desc += ', Heat Wave';
       }
       
+      // Cache successful weather data
+      lastWeatherData = {
+        temperature: c,
+        fahrenheit: f,
+        description: desc,
+        weatherCode: j.current.weather_code,
+        isDay: isDay,
+        isHot: isHot,
+        isWindy: isWindy,
+        condition: condition,
+        lat: lat,
+        lon: lon
+      };
+      lastWeatherTimestamp = Date.now();
+      
+      // Set final weather text
       weatherEl.textContent = `${c}°C | ${f}°F, ${desc}`;
       
       // Update weather icon
@@ -705,7 +721,61 @@
       }
     } catch (error) {
       console.error('Weather fetch failed:', error);
-      weatherEl.textContent = "Weather N/A";
+      
+      // Use cached weather data instead of showing "Weather N/A" (persistent like location caching)
+      if (lastWeatherData) {
+        console.log('Using cached weather data due to fetch failure');
+        const cached = lastWeatherData;
+        weatherEl.textContent = `${cached.temperature}°C | ${cached.fahrenheit}°F, ${cached.description}`;
+        
+        // Update weather icon with cached condition
+        const weatherIcon = document.getElementById('weather-icon');
+        const iconUrls = getGoogleWeatherIcon(cached.weatherCode, cached.isDay, cached.condition);
+        
+        // Create new image element for cached data
+        const imgElement = document.createElement('img');
+        imgElement.alt = cached.description;
+        imgElement.style.cssText = 'width: 24px; height: 24px; filter: drop-shadow(-1px -1px 0 #000) drop-shadow(1px -1px 0 #000) drop-shadow(-1px 1px 0 #000) drop-shadow(1px 1px 0 #000) drop-shadow(0 0 4px #000);';
+        imgElement.src = iconUrls.primary;
+        imgElement.onerror = function() { this.src = iconUrls.fallback; };
+        
+        // Update icon
+        weatherIcon.innerHTML = '';
+        weatherIcon.appendChild(imgElement);
+        
+        // Update secondary effects with cached data
+        const heatWaves = document.getElementById('heat-waves');
+        const windWaves = document.getElementById('wind-waves');
+        
+        if (heatWaves) {
+          heatWaves.style.display = cached.isHot ? 'inline-block' : 'none';
+          if (cached.isHot && cached.isWindy) {
+            heatWaves.classList.add('with-wind');
+          } else {
+            heatWaves.classList.remove('with-wind');
+          }
+        }
+        
+        if (windWaves) {
+          windWaves.style.display = cached.isWindy ? 'inline-block' : 'none';
+          if (cached.isWindy) {
+            if (cached.isHot) {
+              windWaves.classList.remove('only-wind');
+            } else {
+              windWaves.classList.add('only-wind');
+            }
+          } else {
+            windWaves.classList.remove('only-wind');
+          }
+        }
+        
+        // Re-add secondary effects to icon
+        if (heatWaves) weatherIcon.appendChild(heatWaves);
+        if (windWaves) weatherIcon.appendChild(windWaves);
+      } else {
+        // Only show "Weather N/A" if no cached data is available at all
+        weatherEl.textContent = "Weather N/A";
+      }
     }
   }
   
