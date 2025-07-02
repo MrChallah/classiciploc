@@ -100,6 +100,13 @@
   let lastWeatherData = null; // Cache last successful weather
   let lastWeatherTimestamp = 0; // Track when weather was last fetched
   
+  // Connection retry variables
+  let isOnline = navigator.onLine;
+  let retryAttempts = 0;
+  let maxRetryAttempts = 3;
+  let retryTimeouts = [];
+  let hasConnectionIssues = false;
+  
   // Detect if we're on mobile
   const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
   const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
@@ -130,13 +137,15 @@
     
     document.getElementById('time').textContent = `${dateString}, ${timeString}`;
   }
-  tick(); setInterval(tick, 1000);
+  tick(); 
+  // Ensure time updates every second regardless of network issues
+  setInterval(tick, 1000);
   
   async function reverseGeocode(lat, lon){
     try {
       // Use Google's reverse geocoding API for better English translations
       // Add more result types to get better city resolution for imprecise locations
-      const res = await fetch(`https://maps.googleapis.com/maps/api/geocode/json?latlng=${lat},${lon}&key=${GOOGLE_GEO_KEY}&language=en&result_type=locality|administrative_area_level_2|administrative_area_level_1|country`);
+      const res = await fetchWithRetry(`https://maps.googleapis.com/maps/api/geocode/json?latlng=${lat},${lon}&key=${GOOGLE_GEO_KEY}&language=en&result_type=locality|administrative_area_level_2|administrative_area_level_1|country`);
       const data = await res.json();
       
       if (data.status === 'OK' && data.results.length > 0) {
@@ -373,7 +382,7 @@
       console.warn('Google geocoding failed, falling back to Nominatim:', error);
       
       // Fallback to Nominatim with additional language parameters
-      const res = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json&accept-language=en&addressdetails=1&extratags=1`);
+      const res = await fetchWithRetry(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json&accept-language=en&addressdetails=1&extratags=1`);
       const geo = await res.json();
       const addr = geo.address;
       
@@ -606,10 +615,52 @@
     return lat > 0 ? tempThresholds.tropical : tempThresholds.southTropical;
   }
   
+  // Enhanced fetch with retry logic
+  async function fetchWithRetry(url, options = {}, retryCount = 0) {
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+      
+      const response = await fetch(url, {
+        ...options,
+        signal: controller.signal
+      });
+      
+      clearTimeout(timeoutId);
+      
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+      
+      // Reset retry attempts on success
+      retryAttempts = 0;
+      hasConnectionIssues = false;
+      
+      return response;
+    } catch (error) {
+      console.warn(`Fetch attempt ${retryCount + 1} failed:`, error.message);
+      
+      if (retryCount < maxRetryAttempts && (error.name === 'AbortError' || error.name === 'TypeError' || !navigator.onLine)) {
+        hasConnectionIssues = true;
+        const delay = Math.min(1000 * Math.pow(2, retryCount), 10000); // Exponential backoff, max 10 seconds
+        console.log(`Retrying in ${delay}ms...`);
+        
+        await new Promise(resolve => {
+          const timeoutId = setTimeout(resolve, delay);
+          retryTimeouts.push(timeoutId);
+        });
+        
+        return fetchWithRetry(url, options, retryCount + 1);
+      }
+      
+      throw error;
+    }
+  }
+  
   async function fetchWeather(lat, lon){
     try {
-      // Enhanced API call with additional parameters for better condition detection
-      const r = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,weather_code,is_day,wind_speed_10m,precipitation,visibility&timezone=auto`);
+      lastWeatherTimestamp = Date.now(); // Track fetch attempt time
+      const r = await fetchWithRetry(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,weather_code,is_day,wind_speed_10m,precipitation,visibility&timezone=auto`);
       const j = await r.json();
       const c = Math.round(j.current.temperature_2m);
       const f = Math.round(c * 9 / 5 + 32);
@@ -662,7 +713,6 @@
         lat: lat,
         lon: lon
       };
-      lastWeatherTimestamp = Date.now();
       
       // Set final weather text
       weatherEl.textContent = `${c}°C | ${f}°F, ${desc}`;
@@ -1004,7 +1054,7 @@
   // Method 3: Fallback to IP location with multiple services
   async function getLocationFromGoogle(){
     try {
-      const res = await fetch("https://www.googleapis.com/geolocation/v1/geolocate?key=" + GOOGLE_GEO_KEY, {
+      const res = await fetchWithRetry("https://www.googleapis.com/geolocation/v1/geolocate?key=" + GOOGLE_GEO_KEY, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ considerIp: true })
@@ -1037,7 +1087,7 @@
   // Alternative IP location services
   async function getIPLocationFromIpApi() {
     try {
-      const res = await fetch('https://ip-api.com/json/?fields=status,lat,lon');
+      const res = await fetchWithRetry('https://ip-api.com/json/?fields=status,lat,lon');
       
       if (!res.ok) {
         throw new Error(`IP-API failed: ${res.status} ${res.statusText}`);
@@ -1065,7 +1115,7 @@
 
   async function getIPLocationFromIpInfo() {
     try {
-      const res = await fetch('https://ipinfo.io/json');
+      const res = await fetchWithRetry('https://ipinfo.io/json');
       
       if (!res.ok) {
         throw new Error(`IPInfo failed: ${res.status} ${res.statusText}`);
@@ -1094,7 +1144,7 @@
 
   async function getIPLocationFromIpApi2() {
     try {
-      const res = await fetch('https://ipapi.co/json/');
+      const res = await fetchWithRetry('https://ipapi.co/json/');
       
       if (!res.ok) {
         throw new Error(`IPAPI.co failed: ${res.status} ${res.statusText}`);
@@ -1230,8 +1280,40 @@
     }
   }
   
+  // Network state change handlers
+  function handleOnline() {
+    console.log('Connection restored, attempting immediate update...');
+    isOnline = true;
+    hasConnectionIssues = false;
+    
+    // Clear any pending retry timeouts
+    retryTimeouts.forEach(clearTimeout);
+    retryTimeouts = [];
+    
+    // Immediately attempt to update location and weather
+    updateLocationAndWeather(false);
+  }
+  
+  function handleOffline() {
+    console.log('Connection lost, will retry when restored...');
+    isOnline = false;
+    hasConnectionIssues = true;
+  }
+  
+  // Listen for online/offline events
+  window.addEventListener('online', handleOnline);
+  window.addEventListener('offline', handleOffline);
+  
   // Auto-refresh every 55 seconds (without loading messages)
   setInterval(() => updateLocationAndWeather(false), 55000);
+  
+  // Additional more frequent check during connection issues
+  setInterval(() => {
+    if (hasConnectionIssues && navigator.onLine) {
+      console.log('Connection issue detected, attempting recovery update...');
+      updateLocationAndWeather(false);
+    }
+  }, 15000); // Check every 15 seconds during issues
   
   // Debug function to detect available location interfaces
   function debugLocationInterfaces() {
