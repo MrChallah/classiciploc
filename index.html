@@ -796,20 +796,13 @@
         const cached = lastWeatherData;
         weatherEl.textContent = `${cached.temperature}°C | ${cached.fahrenheit}°F, ${cached.description}`;
         
-        // Update weather icon with cached condition
-        const weatherIcon = document.getElementById('weather-icon');
-        const iconUrls = getGoogleWeatherIcon(cached.weatherCode, cached.isDay, cached.condition);
+        // Update weather icon with cached data
+        const weatherIconMain = document.getElementById('weather-icon-main');
+        const iconClass = getWeatherIcon(cached.weatherCode, cached.isDay, cached.temperature);
         
-        // Create new image element for cached data
-        const imgElement = document.createElement('img');
-        imgElement.alt = cached.description;
-        imgElement.style.cssText = 'width: 24px; height: 24px; filter: drop-shadow(-1px -1px 0 #000) drop-shadow(1px -1px 0 #000) drop-shadow(-1px 1px 0 #000) drop-shadow(1px 1px 0 #000) drop-shadow(0 0 4px #000);';
-        imgElement.src = iconUrls.primary;
-        imgElement.onerror = function() { this.src = iconUrls.fallback; };
-        
-        // Update icon
-        weatherIcon.innerHTML = '';
-        weatherIcon.appendChild(imgElement);
+        // Remove all existing weather icon classes
+        weatherIconMain.className = 'weather-icon-main';
+        weatherIconMain.classList.add('fa-solid', iconClass);
         
         // Update secondary effects with cached data
         const heatWaves = document.getElementById('heat-waves');
@@ -1469,7 +1462,6 @@
   // Make cache clear function available globally for console access
   window.clearLocationCache = clearLocationCache;
   window.forceLocationRefresh = forceLocationRefresh;
-  window.debugLocationInterfaces = debugLocationInterfaces;
   
   // Add visual feedback that double-click is available
   placeEl.title = "Double-click to refresh location • Ctrl+R to force refresh • Ctrl+Shift+R to clear cache";
@@ -1483,44 +1475,6 @@
   placeEl.addEventListener('mouseleave', function() {
     this.style.opacity = '1';
   });
-  
-  // Debug function to detect available location interfaces
-  function debugLocationInterfaces() {
-    console.log('=== LOCATION INTERFACE DEBUG ===');
-    console.log('User Agent:', navigator.userAgent);
-    console.log('Location href:', window.location.href);
-    console.log('Location protocol:', window.location.protocol);
-    console.log('Location hostname:', window.location.hostname);
-    console.log('Window chrome:', !!window.chrome);
-    console.log('Outer width:', window.outerWidth, 'Inner width:', window.innerWidth);
-    console.log('IRL Pro locationData:', !!window.locationData);
-    console.log('PRISM prismLocationData:', !!window.prismLocationData);
-    console.log('PRISM window.prism:', !!window.prism);
-    console.log('PRISM window.PRISM_GPS:', !!window.PRISM_GPS);
-    console.log('WebKit messageHandlers:', !!(window.webkit && window.webkit.messageHandlers));
-    console.log('Android interface:', !!window.Android);
-    console.log('Navigator geolocation:', !!navigator.geolocation);
-    console.log('Is in app environment:', isInApp);
-    
-    // Log all window properties that might be related to location
-    const locationRelatedProps = [];
-    for (let prop in window) {
-      if (prop.toLowerCase().includes('location') || 
-          prop.toLowerCase().includes('gps') || 
-          prop.toLowerCase().includes('geo') ||
-          prop.toLowerCase().includes('prism') ||
-          prop.toLowerCase().includes('position')) {
-        locationRelatedProps.push(prop + ': ' + typeof window[prop]);
-      }
-    }
-    if (locationRelatedProps.length > 0) {
-      console.log('Location-related window properties:', locationRelatedProps);
-    }
-    console.log('=== END DEBUG ===');
-  }
-  
-  // Run debug on load
-  setTimeout(debugLocationInterfaces, 1000);
   
   // Start immediately (with loading messages)
   updateLocationAndWeather(true);
