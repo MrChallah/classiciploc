@@ -103,6 +103,7 @@
   // Add location name caching
   let lastLocationName = null; // Cache last successful location name
   let lastLocationTimestamp = 0; // Track when location name was last fetched
+  const LS_KEY = 'ww_last_location_v2';
   
   // Connection retry variables
   let isOnline = navigator.onLine;
@@ -154,8 +155,11 @@
       try {
         return await reverseGeocodeWithNominatim(lat, lon);
       } catch (nominatimError) {
-        console.warn('Nominatim failed, trying Google as fallback:', nominatimError);
-        return await reverseGeocodeWithGoogle(lat, lon);
+        console.warn('Nominatim failed, trying Google/Open-Meteo as fallback:', nominatimError);
+        try { return await reverseGeocodeWithGoogle(lat, lon); } catch (e2) {
+          console.warn('Google failed, falling back to Open-Meteo:', e2.message);
+          return await reverseGeocodeWithOpenMeteo(lat, lon);
+        }
       }
     }
     
@@ -164,8 +168,25 @@
       return await reverseGeocodeWithGoogle(lat, lon);
     } catch (error) {
       console.warn('Google geocoding failed, fallback to Nominatim:', error.message);
-      return await reverseGeocodeWithNominatim(lat, lon);
+      try { return await reverseGeocodeWithNominatim(lat, lon); } catch (e2) {
+        console.warn('Nominatim failed, falling back to Open-Meteo:', e2.message);
+        return await reverseGeocodeWithOpenMeteo(lat, lon);
+      }
     }
+  }
+
+  async function reverseGeocodeWithOpenMeteo(lat, lon) {
+    const res = await fetchWithRetry(`https://geocoding-api.open-meteo.com/v1/reverse?latitude=${lat}&longitude=${lon}&language=en`);
+    const data = await res.json();
+    if (data && data.results && data.results.length > 0) {
+      const r = data.results[0];
+      const city = r.name || '';
+      const state = r.admin1 || '';
+      const country = r.country || '';
+      console.log('Open-Meteo reverse geocoding result:', { city, state, country });
+      return filterLocationByWordCount(city, state, country);
+    }
+    throw new Error('No results from Open-Meteo Reverse Geocoding');
   }
   
   // Helper function to clean administrative terms from city names
@@ -1561,8 +1582,17 @@
             console.log('Using cached location name due to geocoding failure');
             placeEl.textContent = lastLocationName;
           } else {
-            // Only show "Location N/A" if no cached name is available
-            placeEl.textContent = "Location N/A";
+            // Try persistent cache
+            try {
+              const cached = JSON.parse(localStorage.getItem(LS_KEY) || 'null');
+              if (cached && cached.label) {
+                placeEl.textContent = cached.label;
+              } else {
+                placeEl.textContent = "Location N/A";
+              }
+            } catch {
+              placeEl.textContent = "Location N/A";
+            }
           }
         }
         
